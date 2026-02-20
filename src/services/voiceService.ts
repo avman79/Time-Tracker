@@ -28,6 +28,24 @@ const HEBREW_NUMBERS: Record<string, number> = {
   'שתים עשרה': 12, 'שנים עשר': 12,
 };
 
+// ─── Hebrew Month Map ─────────────────────────────────────────────────────────
+
+/** Map spoken Hebrew month names to 1-based month numbers */
+const HEBREW_MONTHS: Record<string, number> = {
+  ינואר: 1,
+  פברואר: 2,
+  מרץ: 3,
+  אפריל: 4,
+  מאי: 5,
+  יוני: 6,
+  יולי: 7,
+  אוגוסט: 8,
+  ספטמבר: 9,
+  אוקטובר: 10,
+  נובמבר: 11,
+  דצמבר: 12,
+};
+
 // ─── Hebrew Day-of-Week Map ───────────────────────────────────────────────────
 
 /** Map spoken Hebrew day names to JS getDay() index (0 = Sunday) */
@@ -101,6 +119,40 @@ function parseHours(text: string): number | undefined {
 }
 
 /**
+ * Parse an explicit day+month date like "16 לפברואר" or "ה-3 במרץ 2024".
+ *
+ * Accepted patterns:
+ *  - "16 לפברואר"        → 16th of February, current or previous year
+ *  - "16 בפברואר"        → same, using ב preposition
+ *  - "ה-16 לפברואר"      → same, with definite article prefix
+ *  - "16 לפברואר 2024"   → 16th of February 2024 (explicit year)
+ *
+ * If no year is given and the resulting date is in the future, the previous
+ * year is used (time-tracking entries are almost always past dates).
+ */
+function parseDateExplicit(text: string): string | undefined {
+  const monthNames = Object.keys(HEBREW_MONTHS).join('|');
+  const regex = new RegExp(
+    `(?:ה-?)?(\\d{1,2})\\s+[לב](${monthNames})(?:\\s+(\\d{4}))?`,
+  );
+  const match = text.match(regex);
+  if (!match) return undefined;
+
+  const day = parseInt(match[1], 10);
+  const month = HEBREW_MONTHS[match[2]];
+  if (!month || day < 1 || day > 31) return undefined;
+
+  const currentYear = new Date().getFullYear();
+  let year = match[3] ? parseInt(match[3], 10) : currentYear;
+
+  // If the date lands in the future, assume the previous year
+  const candidate = new Date(year, month - 1, day);
+  if (candidate > new Date()) year -= 1;
+
+  return format(new Date(year, month - 1, day), 'yyyy-MM-dd');
+}
+
+/**
  * Extract the work date from Hebrew date keywords or day-of-week names.
  * Returns YYYY-MM-DD, or undefined if no date signal is found.
  *
@@ -108,6 +160,7 @@ function parseHours(text: string): number | undefined {
  *  - "היום" → today
  *  - "אתמול" → yesterday
  *  - "שלשום" → two days ago
+ *  - "16 לפברואר" / "ה-3 במרץ 2024" → explicit day + month (+ optional year)
  *  - "ביום ראשון" / "יום חמישי" → most recent past occurrence of that weekday
  */
 function parseDate(text: string): string | undefined {
@@ -116,6 +169,10 @@ function parseDate(text: string): string | undefined {
   if (/היום/.test(text)) return format(today, 'yyyy-MM-dd');
   if (/אתמול/.test(text)) return format(subDays(today, 1), 'yyyy-MM-dd');
   if (/שלשום/.test(text)) return format(subDays(today, 2), 'yyyy-MM-dd');
+
+  // "16 לפברואר" / "ה-3 במרץ 2024"
+  const explicit = parseDateExplicit(text);
+  if (explicit) return explicit;
 
   // "ביום ראשון" / "יום שני" — find most recent past occurrence
   for (const [dayName, targetDay] of Object.entries(HEBREW_DAYS)) {
@@ -209,6 +266,13 @@ function parseDescription(text: string, client: string | undefined): string {
   desc = desc.replace(/\d+\s*דקות?/g, '');
   // Orphaned fraction words
   desc = desc.replace(/(?:וחצי|ורבע|ושלושה\s+רבעים)/g, '');
+
+  // Remove explicit date expressions: "16 לפברואר", "ה-3 במרץ 2024", etc.
+  const monthNames = Object.keys(HEBREW_MONTHS).join('|');
+  desc = desc.replace(
+    new RegExp(`(?:ה-?)?\\d{1,2}\\s+[לב](?:${monthNames})(?:\\s+\\d{4})?`, 'g'),
+    '',
+  );
 
   // Remove date keywords and day-of-week phrases
   desc = desc.replace(
