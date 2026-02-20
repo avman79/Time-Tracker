@@ -143,11 +143,7 @@ function parseDateExplicit(text: string): string | undefined {
   if (!month || day < 1 || day > 31) return undefined;
 
   const currentYear = new Date().getFullYear();
-  let year = match[3] ? parseInt(match[3], 10) : currentYear;
-
-  // If the date lands in the future, assume the previous year
-  const candidate = new Date(year, month - 1, day);
-  if (candidate > new Date()) year -= 1;
+  const year = match[3] ? parseInt(match[3], 10) : currentYear;
 
   return format(new Date(year, month - 1, day), 'yyyy-MM-dd');
 }

@@ -54,8 +54,7 @@ function parseDateExplicit(t) {
   const month = HEBREW_MONTHS[match[2]];
   if (!month || day < 1 || day > 31) return undefined;
   const cy   = new Date().getFullYear();
-  let year   = match[3] ? parseInt(match[3]) : cy;
-  if (new Date(year, month - 1, day) > new Date()) year -= 1;
+  const year = match[3] ? parseInt(match[3]) : cy;
   return format(new Date(year, month - 1, day), 'yyyy-MM-dd');
 }
 
@@ -144,7 +143,7 @@ const tests = [
   { in: 'ממורנד 16 לפברואר שלוש שעות סקירת קוד',
     client:'ממורנד', date:'2026-02-16', hours:3,   desc:'סקירת קוד' },
   { in: 'כללית ה-5 במרץ שעתיים דוח חודשי',
-    client:'כללית',  date:'2025-03-05', hours:2,   desc:'דוח חודשי' },
+    client:'כללית',  date:'2026-03-05', hours:2,   desc:'דוח חודשי' },
   { in: 'יאיר 1 לינואר שעה',
     client:'יאיר',   date:'2026-01-01', hours:1,   desc: undefined },
   { in: 'מנדי 20 לפברואר 2026 חצי שעה שיחת טלפון',

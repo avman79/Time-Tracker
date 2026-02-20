@@ -70,6 +70,7 @@ export const he = {
     workerRequired: 'יש לבחור עובד',
     workerCountInvalid: 'מספר עובדים אינו תקין',
     dateRequired: 'יש לבחור תאריך',
+    dateTooFarInFuture: 'תאריך העבודה לא יכול להיות יותר מ-2 ימים בעתיד',
     googleAuthRequired: 'נא להתחבר לחשבון Google כדי לשמור נתונים',
     sheetsNotConfigured: 'הגדרות Google Sheets חסרות — ראה README',
   },

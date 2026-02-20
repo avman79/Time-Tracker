@@ -5,6 +5,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { createRecognition, parseVoiceTranscript } from '../services/voiceService';
+import { he } from '../i18n/he';
 import type { VoiceParseResult } from '../types';
 
 /** Return type for the useVoiceInput hook */
@@ -63,6 +64,21 @@ export function useVoiceInput(
       const text = event.results[0][0].transcript;
       setTranscript(text);
       const parsed = parseVoiceTranscript(text, knownClients);
+
+      // Reject dates more than 2 days in the future
+      if (parsed.work_date) {
+        const maxDate = new Date();
+        maxDate.setDate(maxDate.getDate() + 2);
+        maxDate.setHours(23, 59, 59, 999);
+        if (new Date(parsed.work_date) > maxDate) {
+          onError(he.validation.dateTooFarInFuture);
+          // Still fill the other fields; leave work_date untouched in the form
+          setLastResult({ ...parsed, work_date: undefined });
+          onResult({ ...parsed, work_date: undefined });
+          return;
+        }
+      }
+
       setLastResult(parsed);
       onResult(parsed);
     };

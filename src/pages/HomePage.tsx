@@ -34,6 +34,13 @@ function emptyForm(worker = ''): FormState {
   };
 }
 
+/** ISO date string for today + n days */
+function dateInDays(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return format(d, 'yyyy-MM-dd');
+}
+
 /** Simple validation: returns a map of field→error message */
 function validate(form: FormState): Partial<Record<keyof FormState, string>> {
   const errors: Partial<Record<keyof FormState, string>> = {};
@@ -41,6 +48,7 @@ function validate(form: FormState): Partial<Record<keyof FormState, string>> {
   if (!form.hours) errors.hours = he.validation.hoursRequired;
   if (form.hours && isNaN(parseFloat(form.hours))) errors.hours = he.validation.hoursInvalid;
   if (!form.worker) errors.worker = he.validation.workerRequired;
+  if (form.work_date && form.work_date > dateInDays(2)) errors.work_date = he.validation.dateTooFarInFuture;
   return errors;
 }
 
@@ -184,10 +192,12 @@ export function HomePage() {
           <label className="label">{he.form.workDate}</label>
           <input
             type="date"
-            className="input"
+            className={`input ${errors.work_date ? 'border-red-500' : ''}`}
             value={form.work_date}
+            max={dateInDays(2)}
             onChange={(e) => setField('work_date', e.target.value)}
           />
+          {errors.work_date && <p className="error-msg">{errors.work_date}</p>}
         </div>
 
         {/* Hours + Worker count */}
