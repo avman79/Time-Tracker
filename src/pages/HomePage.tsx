@@ -115,6 +115,10 @@ export function HomePage() {
       return;
     }
 
+    if (!form.description.trim() && !window.confirm(he.form.confirmNoDescription)) {
+      return;
+    }
+
     try {
       await addEntry({
         entered_by: username,

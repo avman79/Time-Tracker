@@ -321,7 +321,7 @@ export function createRecognition(): SpeechRecognition | null {
 
   const recognition = new Ctor();
   recognition.lang = config.voice.lang;
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
   return recognition;
