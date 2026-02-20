@@ -12,10 +12,10 @@ export const config = {
 
   /** Sheet tab names (change if you rename tabs in Google Sheets) */
   sheets: {
-    entries: 'Sheet1',
-    summary: 'Sheet2',
-    clients: 'Sheet3',
-    users: 'Sheet4',
+    entries: 'רשומות שעות',
+    summary: 'סיכום חודשי',
+    clients: 'רשימת לקוחות',
+    users: 'רשימת עובדים',
   },
 
   /** Voice recognition settings */
