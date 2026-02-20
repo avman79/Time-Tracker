@@ -4,7 +4,7 @@
  * Supports voice input to auto-fill fields.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { format } from 'date-fns';
 import { he } from '../i18n/he';
 import { ClientDropdown } from '../components/ClientDropdown';
@@ -22,14 +22,17 @@ interface FormState {
   description: string;
 }
 
-const EMPTY_FORM: FormState = {
-  client: '',
-  work_date: format(new Date(), 'yyyy-MM-dd'),
-  hours: '',
-  worker: '',
-  worker_count: '1',
-  description: '',
-};
+/** Returns a blank form, optionally seeding the worker field with the logged-in user. */
+function emptyForm(worker = ''): FormState {
+  return {
+    client: '',
+    work_date: format(new Date(), 'yyyy-MM-dd'),
+    hours: '',
+    worker,
+    worker_count: '1',
+    description: '',
+  };
+}
 
 /** Simple validation: returns a map of field→error message */
 function validate(form: FormState): Partial<Record<keyof FormState, string>> {
@@ -45,18 +48,28 @@ function validate(form: FormState): Partial<Record<keyof FormState, string>> {
  * Entry form page.
  */
 export function HomePage() {
-  const { clients, workers, addEntry, addClient, isSubmitting, isAuthenticated, signIn, addToast, recordEntry } =
+  const { clients, workers, addEntry, addClient, isSubmitting, isAuthenticated, signIn, addToast, recordEntry, username } =
     useAppContext();
 
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState<FormState>(() => emptyForm(username));
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
-  const username = useAppContext().username;
 
   /** Update a single form field */
   const setField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }, []);
+
+  /**
+   * Once the workers list has loaded from Sheets, auto-fill the worker field
+   * with the logged-in username if it matches an entry in the list.
+   * Only sets the field if it is still empty (user hasn't changed it manually).
+   */
+  useEffect(() => {
+    if (workers.includes(username)) {
+      setForm((prev) => prev.worker ? prev : { ...prev, worker: username });
+    }
+  }, [workers, username]);
 
   /** Apply voice-parsed result to the form */
   const handleVoiceResult = useCallback(
@@ -106,7 +119,7 @@ export function HomePage() {
       });
       recordEntry();
       addToast(he.toast.entrySaved, 'success');
-      setForm({ ...EMPTY_FORM, work_date: format(new Date(), 'yyyy-MM-dd') });
+      setForm(emptyForm(username));
       setErrors({});
     } catch (err) {
       addToast(
@@ -117,7 +130,7 @@ export function HomePage() {
   }
 
   function handleClear() {
-    setForm({ ...EMPTY_FORM, work_date: format(new Date(), 'yyyy-MM-dd') });
+    setForm(emptyForm(username));
     setErrors({});
   }
 

@@ -1,6 +1,9 @@
 /**
  * Voice input service using the Web Speech API.
  * Parses Hebrew spoken input and extracts structured time-entry fields.
+ *
+ * Expected speech order: client → work date → hours → description
+ * Example: "ממורנד אתמול שלוש שעות וחצי ישיבת צוות"
  */
 
 import { format, subDays } from 'date-fns';
@@ -21,40 +24,106 @@ const HEBREW_NUMBERS: Record<string, number> = {
   שמונה: 8,
   תשע: 9, תשעה: 9,
   עשר: 10, עשרה: 10,
+  'אחת עשרה': 11, 'אחד עשר': 11,
+  'שתים עשרה': 12, 'שנים עשר': 12,
 };
 
-// ─── Parsing Helpers ──────────────────────────────────────────────────────────
+// ─── Hebrew Day-of-Week Map ───────────────────────────────────────────────────
+
+/** Map spoken Hebrew day names to JS getDay() index (0 = Sunday) */
+const HEBREW_DAYS: Record<string, number> = {
+  ראשון: 0,
+  שני: 1,
+  שלישי: 2,
+  רביעי: 3,
+  חמישי: 4,
+  שישי: 5,
+  שבת: 6,
+};
+
+// ─── Fraction Helper ──────────────────────────────────────────────────────────
 
 /**
- * Attempt to extract a decimal hours value from a Hebrew text string.
- * Handles patterns like "3 שעות", "שעתיים", "שלוש שעות וחצי", etc.
- * @param text - Raw Hebrew transcription text
+ * Detect a fractional-hour suffix (וחצי, ורבע, ושלושה רבעים).
+ */
+function parseFraction(text: string): number {
+  if (/ושלושה\s+רבעים|ו?שלושת\s+רבעי/.test(text)) return 0.75;
+  if (/וחצי/.test(text)) return 0.5;
+  if (/ורבע/.test(text)) return 0.25;
+  return 0;
+}
+
+// ─── Field Parsers ────────────────────────────────────────────────────────────
+
+/**
+ * Extract decimal hours from Hebrew text.
+ *
+ * Handles:
+ *  - "חצי שעה" → 0.5
+ *  - "רבע שעה" → 0.25
+ *  - "שלושת רבעי שעה" → 0.75
+ *  - "שעה" / "שעה וחצי" → 1 / 1.5
+ *  - "שעתיים" / "שעתיים ורבע" → 2 / 2.25
+ *  - "3 שעות" / "שלוש שעות וחצי" → 3 / 3.5
+ *  - "45 דקות" → 0.75  (rounded to nearest quarter-hour)
  */
 function parseHours(text: string): number | undefined {
-  // Special case: שעתיים = 2 hours
-  if (/שעתיים/.test(text)) {
-    const fraction = parseFraction(text);
-    return 2 + fraction;
-  }
+  // Stand-alone fractional-hour phrases (no leading whole-hour word)
+  if (/חצי\s+שעה/.test(text) && !/שעות|שעה\s+וחצי|שעתיים/.test(text)) return 0.5;
+  if (/רבע\s+שעה/.test(text) && !/שעות|שעה\s+ורבע|שעתיים/.test(text)) return 0.25;
+  if (/שלושת\s+רבעי\s+שעה/.test(text)) return 0.75;
 
-  // Special case: שעה (אחת) = 1 hour
-  if (/שעה\s*(אחת|אחד)?/.test(text) && !/שעות/.test(text)) {
-    const fraction = parseFraction(text);
-    return 1 + fraction;
-  }
+  // שעתיים = 2 hours (+ optional fraction suffix)
+  if (/שעתיים/.test(text)) return 2 + parseFraction(text);
 
-  // Numeric digit(s) followed by שעות/שעה
+  // שעה (singular, without שעות) = 1 hour (+ optional fraction suffix)
+  if (/שעה/.test(text) && !/שעות/.test(text)) return 1 + parseFraction(text);
+
+  // Digit(s) + שעות, e.g. "3 שעות וחצי"
   const digitMatch = text.match(/(\d+(?:\.\d+)?)\s*שעות?/);
-  if (digitMatch) {
-    const base = parseFloat(digitMatch[1]);
-    return base + parseFraction(text);
+  if (digitMatch) return parseFloat(digitMatch[1]) + parseFraction(text);
+
+  // Hebrew word + שעות, e.g. "שלוש שעות"
+  for (const [word, value] of Object.entries(HEBREW_NUMBERS)) {
+    if (new RegExp(`${word}\\s+שעות?`).test(text)) {
+      return value + parseFraction(text);
+    }
   }
 
-  // Hebrew word followed by שעות
-  for (const [word, value] of Object.entries(HEBREW_NUMBERS)) {
-    const regex = new RegExp(`${word}\\s+שעות?`);
-    if (regex.test(text)) {
-      return value + parseFraction(text);
+  // X דקות — convert minutes to hours, rounded to nearest quarter
+  const minuteMatch = text.match(/(\d+)\s*דקות?/);
+  if (minuteMatch) {
+    const mins = parseInt(minuteMatch[1], 10);
+    return Math.round((mins / 60) * 4) / 4;
+  }
+
+  return undefined;
+}
+
+/**
+ * Extract the work date from Hebrew date keywords or day-of-week names.
+ * Returns YYYY-MM-DD, or undefined if no date signal is found.
+ *
+ * Handles:
+ *  - "היום" → today
+ *  - "אתמול" → yesterday
+ *  - "שלשום" → two days ago
+ *  - "ביום ראשון" / "יום חמישי" → most recent past occurrence of that weekday
+ */
+function parseDate(text: string): string | undefined {
+  const today = new Date();
+
+  if (/היום/.test(text)) return format(today, 'yyyy-MM-dd');
+  if (/אתמול/.test(text)) return format(subDays(today, 1), 'yyyy-MM-dd');
+  if (/שלשום/.test(text)) return format(subDays(today, 2), 'yyyy-MM-dd');
+
+  // "ביום ראשון" / "יום שני" — find most recent past occurrence
+  for (const [dayName, targetDay] of Object.entries(HEBREW_DAYS)) {
+    if (new RegExp(`(?:ביום\\s+|יום\\s+)${dayName}`).test(text)) {
+      const todayDay = today.getDay();
+      let daysBack = todayDay - targetDay;
+      if (daysBack <= 0) daysBack += 7; // same day or future → go back a full week
+      return format(subDays(today, daysBack), 'yyyy-MM-dd');
     }
   }
 
@@ -62,47 +131,29 @@ function parseHours(text: string): number | undefined {
 }
 
 /**
- * Detect and return a fractional hour value from Hebrew fraction words.
- * @param text - Raw Hebrew text
- */
-function parseFraction(text: string): number {
-  if (/ושלושה\s+רבעים/.test(text)) return 0.75;
-  if (/וחצי/.test(text)) return 0.5;
-  if (/ורבע/.test(text)) return 0.25;
-  return 0;
-}
-
-/**
- * Attempt to extract a date from Hebrew date keywords.
- * @param text - Raw Hebrew text
- * @returns Date string in YYYY-MM-DD format, or undefined
- */
-function parseDate(text: string): string | undefined {
-  const today = new Date();
-  if (/היום/.test(text)) return format(today, 'yyyy-MM-dd');
-  if (/אתמול/.test(text)) return format(subDays(today, 1), 'yyyy-MM-dd');
-  if (/שלשום/.test(text)) return format(subDays(today, 2), 'yyyy-MM-dd');
-  return undefined;
-}
-
-/**
- * Attempt to extract a client name from a Hebrew phrase.
- * Looks for patterns like "ללקוח X", "עבור X", "עבור לקוח X".
- * @param text - Raw Hebrew text
- * @param knownClients - List of known clients to match against
+ * Extract a client name from transcribed text.
+ *
+ * Strategy:
+ *  1. Try known clients first — sorted longest→shortest to avoid partial matches.
+ *     Matching is case-insensitive.
+ *  2. Fall back to heuristic keyword patterns (ללקוח X, עבור X, אצל X, של X).
  */
 function parseClient(text: string, knownClients: string[]): string | undefined {
-  // Try to match a known client name directly (case-insensitive)
-  for (const client of knownClients) {
-    if (text.includes(client)) return client;
+  // Sort by descending length so "אורי רז" beats "אורי"
+  const sorted = [...knownClients].sort((a, b) => b.length - a.length);
+  for (const client of sorted) {
+    const escaped = client.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(escaped, 'i').test(text)) return client;
   }
 
-  // Try heuristic extraction: text after "ללקוח" / "עבור לקוח" / "עבור"
+  // Heuristic patterns — ordered from most to least specific
   const patterns = [
-    /ללקוח\s+([^\s,]+(?:\s[^\s,]+)?)/,
-    /עבור\s+לקוח\s+([^\s,]+(?:\s[^\s,]+)?)/,
-    /עבור\s+([^\s,]+(?:\s[^\s,]+)?)/,
-    /לקוח\s+([^\s,]+(?:\s[^\s,]+)?)/,
+    /ללקוח\s+([^\s,]+(?:\s+[^\s,]+)?)/,
+    /עבור\s+לקוח\s+([^\s,]+(?:\s+[^\s,]+)?)/,
+    /לקוח\s+([^\s,]+(?:\s+[^\s,]+)?)/,
+    /אצל\s+([^\s,]+(?:\s+[^\s,]+)?)/,
+    /עבור\s+([^\s,]+(?:\s+[^\s,]+)?)/,
+    /של\s+([^\s,]+(?:\s+[^\s,]+)?)/,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -113,49 +164,86 @@ function parseClient(text: string, knownClients: string[]): string | undefined {
 }
 
 /**
- * Extract a description from the transcribed text by removing detected
- * hour, client and date sub-strings.
- * @param text - Raw Hebrew transcription
+ * Build the description by stripping all recognised field tokens from the text,
+ * leaving only the free-text work description.
+ *
+ * @param text   - Raw transcript
+ * @param client - Already-detected client name (removed verbatim if present)
  */
-function parseDescription(text: string): string {
+function parseDescription(text: string, client: string | undefined): string {
   let desc = text;
 
-  // Remove hour-related phrases
-  desc = desc.replace(/(\d+(?:\.\d+)?|\w+)\s*שעות?\s*(וחצי|ורבע|ושלושה\s+רבעים)?/g, '');
-  desc = desc.replace(/שעתיים\s*(וחצי|ורבע)?/g, '');
+  // Remove the matched client name
+  if (client) {
+    const escaped = client.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    desc = desc.replace(new RegExp(escaped, 'gi'), '');
+  }
+  // Remove heuristic client introduction phrases
+  desc = desc.replace(
+    /(?:ללקוח|עבור\s+לקוח|לקוח|עבור|אצל|של)\s+[^\s,]+(?:\s+[^\s,]+)?/g,
+    '',
+  );
 
-  // Remove client-related phrases
-  desc = desc.replace(/(?:ללקוח|עבור\s+לקוח|עבור|לקוח)\s+[^\s,]+(?:\s[^\s,]+)?/g, '');
+  // Remove stand-alone fractional-hour phrases
+  desc = desc.replace(/שלושת\s+רבעי\s+שעה/g, '');
+  desc = desc.replace(/חצי\s+שעה/g, '');
+  desc = desc.replace(/רבע\s+שעה/g, '');
 
-  // Remove date keywords
+  // Remove whole + fractional hour expressions
+  desc = desc.replace(
+    /שעתיים(?:\s+(?:וחצי|ורבע|ושלושה\s+רבעים|ושלושת\s+רבעי))?/g,
+    '',
+  );
+  desc = desc.replace(
+    /שעה(?:\s+(?:וחצי|ורבע|ושלושה\s+רבעים|ושלושת\s+רבעי))?/g,
+    '',
+  );
+  desc = desc.replace(
+    /\d+(?:\.\d+)?\s*שעות?(?:\s+(?:וחצי|ורבע|ושלושה\s+רבעים))?/g,
+    '',
+  );
+  desc = desc.replace(
+    /[א-ת]+\s+שעות?(?:\s+(?:וחצי|ורבע))?/g,
+    '',
+  );
+  desc = desc.replace(/\d+\s*דקות?/g, '');
+  // Orphaned fraction words
+  desc = desc.replace(/(?:וחצי|ורבע|ושלושה\s+רבעים)/g, '');
+
+  // Remove date keywords and day-of-week phrases
+  desc = desc.replace(
+    /(?:ביום\s+|יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/g,
+    '',
+  );
   desc = desc.replace(/היום|אתמול|שלשום/g, '');
 
-  // Remove common filler words
-  desc = desc.replace(/על\s+|עבודה\s+על\s+|עבודה\s+/g, '');
+  // Strip leading filler prepositions left behind
+  desc = desc.replace(/\b(?:על|ב|את|עם|ל)\s+/g, '');
 
-  return desc.replace(/\s+/g, ' ').trim();
+  return desc.replace(/\s{2,}/g, ' ').trim();
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Parse a Hebrew speech transcription and extract time-entry fields.
+ * Fields are returned in the entry-form order: client → work_date → hours → description.
  *
- * @param transcript - Raw text from Web Speech API
- * @param knownClients - List of known client names for matching
- * @returns Partially or fully populated VoiceParseResult
+ * @param transcript   - Raw text from Web Speech API
+ * @param knownClients - Known client names to match against
  */
 export function parseVoiceTranscript(
   transcript: string,
   knownClients: string[] = [],
 ): VoiceParseResult {
   const text = transcript.trim();
+  const client = parseClient(text, knownClients);
 
   return {
-    hours: parseHours(text),
-    client: parseClient(text, knownClients),
+    client,
     work_date: parseDate(text),
-    description: parseDescription(text) || undefined,
+    hours: parseHours(text),
+    description: parseDescription(text, client) || undefined,
   };
 }
 
@@ -163,7 +251,7 @@ export function parseVoiceTranscript(
 
 /**
  * Create and return a configured SpeechRecognition instance for Hebrew.
- * @returns A SpeechRecognition object, or null if the API is not available.
+ * Returns null if the browser does not support the Web Speech API.
  */
 export function createRecognition(): SpeechRecognition | null {
   const Ctor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
