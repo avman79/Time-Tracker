@@ -212,9 +212,11 @@ function parseClient(text: string, knownClients: string[]): string | undefined {
     /עבור\s+([^\s,]+(?:\s+[^\s,]+)?)/,
     /של\s+([^\s,]+(?:\s+[^\s,]+)?)/,
   ];
+  // Strip trailing date/time stop words that bleed into the client capture group
+  const stopWords = /\s+(?:היום|אתמול|שלשום|ביום|יום|ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת|שעתיים|שעה|חצי|רבע|\d+\s*(?:שעות?|דקות?)).*$/;
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match) return match[1].trim();
+    if (match) return match[1].replace(stopWords, '').trim();
   }
 
   return undefined;
