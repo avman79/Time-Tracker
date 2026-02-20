@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Background -->
+  <rect width="192" height="192" rx="40" fill="#2563eb"/>
+  <!-- Clock face -->
+  <circle cx="96" cy="100" r="58" fill="white" opacity="0.95"/>
+  <!-- Clock tick marks -->
+  <line x1="96" y1="50" x2="96" y2="60" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+  <line x1="96" y1="140" x2="96" y2="150" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+  <line x1="46" y1="100" x2="56" y2="100" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+  <line x1="136" y1="100" x2="146" y2="100" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+  <!-- Hour hand (pointing ~10 o'clock) -->
+  <line x1="96" y1="100" x2="76" y2="78" stroke="#1e40af" stroke-width="5" stroke-linecap="round"/>
+  <!-- Minute hand (pointing ~2 o'clock) -->
+  <line x1="96" y1="100" x2="116" y2="72" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Center dot -->
+  <circle cx="96" cy="100" r="5" fill="#1e40af"/>
+  <!-- Hebrew letter shin (ש) as a subtle watermark -->
+  <text x="96" y="130" text-anchor="middle" font-family="serif" font-size="18" fill="#93c5fd" opacity="0.7">ש</text>
+</svg>
