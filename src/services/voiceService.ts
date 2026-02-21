@@ -119,6 +119,24 @@ function parseHours(text: string): number | undefined {
 }
 
 /**
+ * Find a bare integer in the text that is not part of any recognised field
+ * pattern (explicit date, year, digit+שעות, digit+דקות).
+ * Used as a last-resort to interpret an ambiguous number as hours or date-day.
+ */
+function parseStandaloneNumber(text: string): number | null {
+  const monthNames = Object.keys(HEBREW_MONTHS).join('|');
+  const cleaned = text
+    // Remove explicit date patterns: "16 לפברואר", "ה-3 במרץ 2026"
+    .replace(new RegExp(`(?:ה-?)?\\d{1,2}\\s+[לב](?:${monthNames})(?:\\s+\\d{4})?`, 'g'), ' ')
+    // Remove 4-digit years
+    .replace(/\b\d{4}\b/g, ' ')
+    // Remove digit + hour/minute words: "3 שעות", "45 דקות", "3.5 שעות"
+    .replace(/\d+(?:\.\d+)?\s*(?:שעות?|דקות?)/g, ' ');
+  const match = cleaned.match(/\b(\d+)\b/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
  * Parse an explicit day+month date like "16 לפברואר" or "ה-3 במרץ 2024".
  *
  * Accepted patterns:
@@ -222,10 +240,12 @@ function parseClient(text: string, knownClients: string[]): string | undefined {
  * Build the description by stripping all recognised field tokens from the text,
  * leaving only the free-text work description.
  *
- * @param text   - Raw transcript
- * @param client - Already-detected client name (removed verbatim if present)
+ * @param text            - Raw transcript
+ * @param client          - Already-detected client name (removed verbatim if present)
+ * @param consumedNumber  - A standalone number that was consumed as hours or date-day
+ *                          and must also be removed from the description
  */
-function parseDescription(text: string, client: string | undefined): string {
+function parseDescription(text: string, client: string | undefined, consumedNumber: number | null = null): string {
   let desc = text;
 
   // Remove the matched client name
@@ -282,6 +302,11 @@ function parseDescription(text: string, client: string | undefined): string {
   // Strip leading filler prepositions left behind
   desc = desc.replace(/\b(?:על|ב|את|עם|ל)\s+/g, '');
 
+  // Strip a standalone number that was consumed as hours or date-day
+  if (consumedNumber !== null) {
+    desc = desc.replace(new RegExp(`\\b${consumedNumber}\\b`, 'g'), '');
+  }
+
   return desc.replace(/\s{2,}/g, ' ').trim();
 }
 
@@ -301,11 +326,34 @@ export function parseVoiceTranscript(
   const text = transcript.trim();
   const client = parseClient(text, knownClients);
 
+  let hours = parseHours(text);
+  let work_date = parseDate(text);
+  let consumedStandalone: number | null = null;
+
+  const standalone = parseStandaloneNumber(text);
+  if (standalone !== null) {
+    if (hours === undefined && standalone >= 0.25 && standalone <= 24) {
+      // No hour pattern found — treat the bare number as hours
+      hours = standalone;
+      consumedStandalone = standalone;
+    } else if (hours !== undefined && work_date === undefined && standalone >= 1 && standalone <= 31) {
+      // Hours already detected, no date — treat the bare number as a day-of-month
+      const today = new Date();
+      let d = new Date(today.getFullYear(), today.getMonth(), standalone);
+      if (d > today) {
+        // Day is still in the future this month → fall back to previous month
+        d = new Date(today.getFullYear(), today.getMonth() - 1, standalone);
+      }
+      work_date = format(d, 'yyyy-MM-dd');
+      consumedStandalone = standalone;
+    }
+  }
+
   return {
     client,
-    work_date: parseDate(text),
-    hours: parseHours(text),
-    description: parseDescription(text, client) || undefined,
+    work_date,
+    hours,
+    description: parseDescription(text, client, consumedStandalone) || undefined,
   };
 }
 

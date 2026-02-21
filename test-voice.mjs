@@ -95,7 +95,17 @@ function parseClient(t, clients) {
   return undefined;
 }
 
-function parseDescription(t, client) {
+function parseStandaloneNumber(t) {
+  const mn = Object.keys(HEBREW_MONTHS).join('|');
+  const cleaned = t
+    .replace(new RegExp(`(?:ה-?)?\\d{1,2}\\s+[לב](?:${mn})(?:\\s+\\d{4})?`, 'g'), ' ')
+    .replace(/\b\d{4}\b/g, ' ')
+    .replace(/\d+(?:\.\d+)?\s*(?:שעות?|דקות?)/g, ' ');
+  const m = cleaned.match(/\b(\d+)\b/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function parseDescription(t, client, consumedNumber = null) {
   let d = t;
   if (client) {
     const esc = client.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -114,13 +124,32 @@ function parseDescription(t, client) {
   d = d.replace(/(?:ביום\s+|יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/g, '');
   d = d.replace(/היום|אתמול|שלשום/g, '');
   d = d.replace(/\b(?:על|ב|את|עם|ל)\s+/g, '');
+  if (consumedNumber !== null) {
+    d = d.replace(new RegExp(`\\b${consumedNumber}\\b`, 'g'), '');
+  }
   return d.replace(/\s{2,}/g, ' ').trim() || undefined;
 }
 
 function parse(transcript, clients = []) {
   const t = transcript.trim();
   const client = parseClient(t, clients);
-  return { client, work_date: parseDate(t), hours: parseHours(t), description: parseDescription(t, client) };
+  let hours = parseHours(t);
+  let work_date = parseDate(t);
+  let consumedStandalone = null;
+  const standalone = parseStandaloneNumber(t);
+  if (standalone !== null) {
+    if (hours === undefined && standalone >= 0.25 && standalone <= 24) {
+      hours = standalone;
+      consumedStandalone = standalone;
+    } else if (hours !== undefined && work_date === undefined && standalone >= 1 && standalone <= 31) {
+      const today = new Date();
+      let d = new Date(today.getFullYear(), today.getMonth(), standalone);
+      if (d > today) d = new Date(today.getFullYear(), today.getMonth() - 1, standalone);
+      work_date = format(d, 'yyyy-MM-dd');
+      consumedStandalone = standalone;
+    }
+  }
+  return { client, work_date, hours, description: parseDescription(t, client, consumedStandalone) };
 }
 
 // ── Test suite ───────────────────────────────────────────────────────────────
@@ -168,6 +197,22 @@ const tests = [
     client:'גולן',   date:YESTERDAY, hours:2, desc:'ייעוץ' },
   { in: 'אצל דוד היום שעה פגישה',
     client:'דוד',    date:TODAY,     hours:1, desc:'פגישה' },
+
+  // ── standalone number → hours (no hours keyword) ─────────────────────────
+  { in: 'ממורנד היום 3 ישיבת צוות',
+    client:'ממורנד', date:TODAY, hours:3, desc:'ישיבת צוות' },
+  { in: 'ליאב אתמול 2 עבודת קוד',
+    client:'ליאב',   date:YESTERDAY, hours:2, desc:'עבודת קוד' },
+
+  // ── standalone number → date day (hours already parsed) ─────────────────
+  { in: 'קייזר שלוש שעות 15 הצעת מחיר',
+    client:'קייזר',
+    date: (() => { const t=new Date(); let d=new Date(t.getFullYear(),t.getMonth(),15); if(d>t) d=new Date(t.getFullYear(),t.getMonth()-1,15); return format(d,'yyyy-MM-dd'); })(),
+    hours:3, desc:'הצעת מחיר' },
+  { in: 'מנדי שעתיים 10 פגישת לקוח',
+    client:'מנדי',
+    date: (() => { const t=new Date(); let d=new Date(t.getFullYear(),t.getMonth(),10); if(d>t) d=new Date(t.getFullYear(),t.getMonth()-1,10); return format(d,'yyyy-MM-dd'); })(),
+    hours:2, desc:'פגישת לקוח' },
 ];
 
 let pass = 0, fail = 0;

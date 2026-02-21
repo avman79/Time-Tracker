@@ -294,16 +294,11 @@ export async function refreshSummary(entries: TimeEntry[], token: string): Promi
  * @param token - OAuth 2.0 Bearer token
  */
 export async function ensureHeaders(token: string): Promise<void> {
-  const existingHeaders = await readRange(`${config.sheets.entries}!A1:H1`);
-  if (existingHeaders.length > 0 && existingHeaders[0].length > 0) return;
-
-  const headers = [
-    ['נרשם על ידי', 'זמן רישום', 'לקוח', 'תאריך עבודה', 'שעות', 'עובד', 'מספר עובדים', 'תיאור'],
-  ];
-  const range = `${config.sheets.entries}!A1`;
-  await authFetch(updateUrl(range), 'PUT', token, {
-    range,
-    values: headers,
+  // Always PUT the header row so column names stay in sync with the app.
+  const entriesRange = `${config.sheets.entries}!A1`;
+  await authFetch(updateUrl(entriesRange), 'PUT', token, {
+    range: entriesRange,
+    values: [['נרשם על ידי', 'זמן רישום', 'לקוח', 'תאריך עבודה', 'שעות', 'עובד', 'מספר עובדים', 'תיאור העבודה']],
     majorDimension: 'ROWS',
   });
 
