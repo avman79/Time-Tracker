@@ -18,6 +18,8 @@ import {
   appendEntry,
   appendClient,
   appendWorker,
+  deleteEntry as deleteEntryRow,
+  updateEntry as updateEntryRow,
   refreshSummary,
   ensureHeaders,
 } from '../services/googleSheets';
@@ -46,6 +48,8 @@ export interface UseGoogleSheetsReturn {
 
   // ── Actions ──
   addEntry: (entry: Omit<TimeEntry, 'id' | 'entry_timestamp'>) => Promise<void>;
+  deleteEntry: (id: string) => Promise<void>;
+  updateEntry: (entry: TimeEntry) => Promise<void>;
   addClient: (name: string) => Promise<void>;
   addWorker: (name: string) => Promise<void>;
   refreshEntries: () => Promise<void>;
@@ -235,6 +239,44 @@ export function useGoogleSheets(onError: (msg: string) => void): UseGoogleSheets
     [accessToken, onError],
   );
 
+  /**
+   * Delete a time entry row from Sheet1 and refresh local state.
+   */
+  const deleteEntry = useCallback(
+    async (id: string) => {
+      if (!accessToken) { onError('נא להתחבר לחשבון Google'); return; }
+      setIsSubmitting(true);
+      try {
+        await deleteEntryRow(id, accessToken);
+        const updated = await fetchEntries();
+        setEntries(updated);
+        await refreshSummary(updated, accessToken);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [accessToken, onError],
+  );
+
+  /**
+   * Overwrite a time entry row in Sheet1 and refresh local state.
+   */
+  const updateEntry = useCallback(
+    async (entry: TimeEntry) => {
+      if (!accessToken) { onError('נא להתחבר לחשבון Google'); return; }
+      setIsSubmitting(true);
+      try {
+        await updateEntryRow(entry, accessToken);
+        const updated = await fetchEntries();
+        setEntries(updated);
+        await refreshSummary(updated, accessToken);
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [accessToken, onError],
+  );
+
   const refreshEntries = useCallback(() => loadEntries(), [loadEntries]);
   const refreshAll = useCallback(async () => {
     await Promise.all([loadClients(), loadWorkers(), loadEntries()]);
@@ -253,6 +295,8 @@ export function useGoogleSheets(onError: (msg: string) => void): UseGoogleSheets
     isLoadingEntries,
     isSubmitting,
     addEntry,
+    deleteEntry,
+    updateEntry,
     addClient,
     addWorker,
     refreshEntries,

@@ -175,6 +175,77 @@ export async function appendWorker(workerName: string, token: string): Promise<v
   });
 }
 
+// ─── Row Mutation Operations ──────────────────────────────────────────────────
+
+/**
+ * Fetch the numeric sheetId (gid) for the entries tab.
+ * Cached after first call — the gid never changes for a given sheet.
+ */
+let cachedEntriesSheetId: number | null = null;
+
+async function getEntriesSheetId(): Promise<number> {
+  if (cachedEntriesSheetId !== null) return cachedEntriesSheetId;
+  const res = await fetch(
+    `${BASE_URL}/${config.sheetId}?fields=sheets.properties&key=${config.apiKey}`,
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json() as {
+    sheets: { properties: { title: string; sheetId: number } }[];
+  };
+  const sheet = data.sheets.find((s) => s.properties.title === config.sheets.entries);
+  cachedEntriesSheetId = sheet?.properties.sheetId ?? 0;
+  return cachedEntriesSheetId;
+}
+
+/**
+ * Delete a single data row from Sheet1 using the batchUpdate deleteDimension API.
+ * @param rowId - The row's 1-based spreadsheet row number (stored as entry.id)
+ * @param token - OAuth 2.0 Bearer token
+ */
+export async function deleteEntry(rowId: string, token: string): Promise<void> {
+  const rowIndex = parseInt(rowId, 10); // 1-based sheet row (row 2 = first data row)
+  const sheetId = await getEntriesSheetId();
+  await authFetch(`${BASE_URL}/${config.sheetId}:batchUpdate`, 'POST', token, {
+    requests: [
+      {
+        deleteDimension: {
+          range: {
+            sheetId,
+            dimension: 'ROWS',
+            startIndex: rowIndex - 1, // 0-based
+            endIndex: rowIndex,
+          },
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * Overwrite a single data row in Sheet1 with updated entry values.
+ * @param entry - The full updated entry (entry.id is used as the row address)
+ * @param token - OAuth 2.0 Bearer token
+ */
+export async function updateEntry(entry: TimeEntry, token: string): Promise<void> {
+  const range = `${config.sheets.entries}!A${entry.id}:H${entry.id}`;
+  await authFetch(updateUrl(range), 'PUT', token, {
+    range,
+    values: [
+      [
+        entry.entered_by,
+        entry.entry_timestamp,
+        entry.client,
+        entry.work_date,
+        entry.hours,
+        entry.worker,
+        entry.worker_count,
+        entry.description,
+      ],
+    ],
+    majorDimension: 'ROWS',
+  });
+}
+
 // ─── Summary Refresh ──────────────────────────────────────────────────────────
 
 /**

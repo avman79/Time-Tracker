@@ -93,6 +93,9 @@ export const he = {
     notificationEnabled: 'התראות הופעלו',
     notificationDenied: 'ההרשאה לתראות נדחתה',
     clientDeleted: 'הלקוח נמחק',
+    entryDeleted: 'הרשומה נמחקה',
+    entryUpdated: 'הרשומה עודכנה',
+    entryDuplicated: 'הרשומה שוכפלה',
   },
 
   // ─── History Page ───────────────────────────────────────────────────────────
@@ -106,6 +109,15 @@ export const he = {
     exportBtn: 'ייצוא ל-Excel',
     totalHours: 'סה״כ שעות',
     entriesCount: 'רשומות',
+    thisWeek: 'השבוע',
+    thisMonth: 'החודש',
+    allTime: 'הכל',
+    monthSummary: 'סה״כ שעות החודש',
+    sortBy: 'מיון',
+    duplicate: 'שכפל',
+    confirmDelete: 'האם למחוק רשומה זו?',
+    hoursPerClient: 'שעות לפי לקוח',
+    editTitle: 'עריכת רשומה',
     columns: {
       date: 'תאריך',
       client: 'לקוח',
