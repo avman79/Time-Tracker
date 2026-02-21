@@ -299,8 +299,13 @@ function parseDescription(text: string, client: string | undefined, consumedNumb
   );
   desc = desc.replace(/היום|אתמול|שלשום/g, '');
 
-  // Strip leading filler prepositions left behind
-  desc = desc.replace(/\b(?:על|ב|את|עם|ל)\s+/g, '');
+  // Strip standalone prepositions left between Hebrew words.
+  // Note: \b does not work with Hebrew (non-ASCII) characters in JS, so we
+  // match on whitespace or start-of-string instead.
+  desc = desc.replace(/(^|\s)(?:על|ב|את|עם|ל)\s+/g, ' ');
+  // Strip a lone ל prefix that is directly attached to the first Hebrew word
+  // (e.g. "לישיבת צוות" → "ישיבת צוות").
+  desc = desc.replace(/^ל(?=[א-ת])/, '');
 
   // Strip a standalone number that was consumed as hours or date-day
   if (consumedNumber !== null) {
@@ -337,13 +342,11 @@ export function parseVoiceTranscript(
       hours = standalone;
       consumedStandalone = standalone;
     } else if (hours !== undefined && work_date === undefined && standalone >= 1 && standalone <= 31) {
-      // Hours already detected, no date — treat the bare number as a day-of-month
+      // Hours already detected, no date — treat the bare number as a day-of-month.
+      // Always use the current month; if the resulting date is too far in the
+      // future it will be caught and reported by useVoiceInput (no silent fallback).
       const today = new Date();
-      let d = new Date(today.getFullYear(), today.getMonth(), standalone);
-      if (d > today) {
-        // Day is still in the future this month → fall back to previous month
-        d = new Date(today.getFullYear(), today.getMonth() - 1, standalone);
-      }
+      const d = new Date(today.getFullYear(), today.getMonth(), standalone);
       work_date = format(d, 'yyyy-MM-dd');
       consumedStandalone = standalone;
     }

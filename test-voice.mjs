@@ -123,7 +123,9 @@ function parseDescription(t, client, consumedNumber = null) {
   d = d.replace(new RegExp(`(?:ה-?)?\\d{1,2}\\s+[לב](?:${mn})(?:\\s+\\d{4})?`, 'g'), '');
   d = d.replace(/(?:ביום\s+|יום\s+)?(?:ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)/g, '');
   d = d.replace(/היום|אתמול|שלשום/g, '');
-  d = d.replace(/\b(?:על|ב|את|עם|ל)\s+/g, '');
+  // \b does not work with Hebrew — use whitespace boundary instead
+  d = d.replace(/(^|\s)(?:על|ב|את|עם|ל)\s+/g, ' ');
+  d = d.replace(/^ל(?=[\u05D0-\u05EA])/, '');
   if (consumedNumber !== null) {
     d = d.replace(new RegExp(`\\b${consumedNumber}\\b`, 'g'), '');
   }
@@ -142,9 +144,9 @@ function parse(transcript, clients = []) {
       hours = standalone;
       consumedStandalone = standalone;
     } else if (hours !== undefined && work_date === undefined && standalone >= 1 && standalone <= 31) {
+      // Always use current month — no silent fallback to previous month.
       const today = new Date();
-      let d = new Date(today.getFullYear(), today.getMonth(), standalone);
-      if (d > today) d = new Date(today.getFullYear(), today.getMonth() - 1, standalone);
+      const d = new Date(today.getFullYear(), today.getMonth(), standalone);
       work_date = format(d, 'yyyy-MM-dd');
       consumedStandalone = standalone;
     }
@@ -205,13 +207,14 @@ const tests = [
     client:'ליאב',   date:YESTERDAY, hours:2, desc:'עבודת קוד' },
 
   // ── standalone number → date day (hours already parsed) ─────────────────
+  // Always resolves to current month (no silent previous-month fallback).
   { in: 'קייזר שלוש שעות 15 הצעת מחיר',
     client:'קייזר',
-    date: (() => { const t=new Date(); let d=new Date(t.getFullYear(),t.getMonth(),15); if(d>t) d=new Date(t.getFullYear(),t.getMonth()-1,15); return format(d,'yyyy-MM-dd'); })(),
+    date: format(new Date(new Date().getFullYear(), new Date().getMonth(), 15), 'yyyy-MM-dd'),
     hours:3, desc:'הצעת מחיר' },
   { in: 'מנדי שעתיים 10 פגישת לקוח',
     client:'מנדי',
-    date: (() => { const t=new Date(); let d=new Date(t.getFullYear(),t.getMonth(),10); if(d>t) d=new Date(t.getFullYear(),t.getMonth()-1,10); return format(d,'yyyy-MM-dd'); })(),
+    date: format(new Date(new Date().getFullYear(), new Date().getMonth(), 10), 'yyyy-MM-dd'),
     hours:2, desc:'פגישת לקוח' },
 ];
 

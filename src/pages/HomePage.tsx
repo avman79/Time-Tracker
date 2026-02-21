@@ -79,9 +79,9 @@ export function HomePage() {
     }
   }, [workers, username]);
 
-  /** Apply voice-parsed result to the form */
+  /** Apply voice-parsed result to the form (called for both partial and final results) */
   const handleVoiceResult = useCallback(
-    (result: VoiceParseResult) => {
+    (result: VoiceParseResult, isFinal: boolean) => {
       setForm((prev) => ({
         ...prev,
         ...(result.client !== undefined ? { client: result.client } : {}),
@@ -89,7 +89,8 @@ export function HomePage() {
         ...(result.work_date !== undefined ? { work_date: result.work_date } : {}),
         ...(result.description !== undefined ? { description: result.description } : {}),
       }));
-      addToast(he.voice.filled, 'info');
+      // Show the success toast only once, when recording ends.
+      if (isFinal) addToast(he.voice.filled, 'info');
     },
     [addToast],
   );

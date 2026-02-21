@@ -94,7 +94,7 @@ async function readRange(range: string): Promise<string[][]> {
  */
 export async function fetchClients(): Promise<string[]> {
   const rows = await readRange(`${config.sheets.clients}!A:A`);
-  return rows.slice(1).map((r) => r[0]).filter(Boolean);
+  return rows.slice(1).map((r) => r[0]?.trim()).filter(Boolean) as string[];
 }
 
 /**
@@ -103,7 +103,7 @@ export async function fetchClients(): Promise<string[]> {
  */
 export async function fetchWorkers(): Promise<string[]> {
   const rows = await readRange(`${config.sheets.users}!A:A`);
-  return rows.slice(1).map((r) => r[0]).filter(Boolean);
+  return rows.slice(1).map((r) => r[0]?.trim()).filter(Boolean) as string[];
 }
 
 /**
@@ -115,12 +115,12 @@ export async function fetchEntries(): Promise<TimeEntry[]> {
   const rows = await readRange(`${config.sheets.entries}!A:H`);
   return rows.slice(1).map((row, index) => ({
     id: String(index + 2), // +2 accounts for header row and 1-based index
-    entered_by: row[0] ?? '',
+    entered_by: (row[0] ?? '').trim(),
     entry_timestamp: row[1] ?? '',
-    client: row[2] ?? '',
-    work_date: row[3] ?? '',
+    client: (row[2] ?? '').trim(),
+    work_date: (row[3] ?? '').trim(),
     hours: parseFloat(row[4] ?? '0') || 0,
-    worker: row[5] ?? '',
+    worker: (row[5] ?? '').trim(),
     worker_count: parseInt(row[6] ?? '1', 10) || 1,
     description: row[7] ?? '',
   }));
